@@ -17,7 +17,7 @@ import unittest
 from unittest import mock
 
 # Import Sensor
-from sample_provider.sensors.sample_sensor import SampleSensor
+from openmldb_provider.sensors.sample_sensor import SampleSensor
 
 
 log = logging.getLogger(__name__)

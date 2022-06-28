@@ -5,39 +5,39 @@ Requires the unittest, pytest, and requests-mock Python libraries.
 
 Run test:
 
-    python3 -m unittest tests.operators.test_sample_operator.TestSampleOperator
+    python3 -m unittest tests.operators.test_openmldb_operator.TestOpenMLDBOperator
 
 """
 
 import json
 import logging
-import os
-import pytest
-import requests_mock
 import unittest
 from unittest import mock
 
-# Import Operator
-from sample_provider.operators.sample_operator import SampleOperator
+import requests_mock
 
+# Import Operator
+from airflow import AirflowException
+
+from openmldb_provider.operators.openmldb_operator import OpenMLDBOperator
 
 log = logging.getLogger(__name__)
 
 
 # Mock the `conn_sample` Airflow connection
-@mock.patch.dict('os.environ', AIRFLOW_CONN_CONN_SAMPLE='http://https%3A%2F%2Fwww.httpbin.org%2F')
-class TestSampleOperator(unittest.TestCase):
+@mock.patch.dict('os.environ', AIRFLOW_CONN_CONN_SAMPLE='http://https%3A%2F%2Fwww.httpbin.org%2F',
+                 AIRFLOW_CONN_OPENMLDB_DEFAULT='http://http%3A%2F%2F127.0.0.1%3A9080%2Fdbs%2Fairflow_test%2Foffsync')
+class TestOpenMLDBOperator(unittest.TestCase):
     """
-    Test Sample Operator.
+    Test OpenMLDB Operator.
     """
 
     @requests_mock.mock()
     def test_operator(self, m):
-
         # Mock endpoint
         m.get('https://www.httpbin.org/', json={'data': 'mocked response'})
 
-        operator = SampleOperator(
+        operator = OpenMLDBOperator(
             task_id='run_operator',
             sample_conn_id='conn_sample',
             method='get'
@@ -51,6 +51,14 @@ class TestSampleOperator(unittest.TestCase):
 
         # Assert the API call returns expected mocked payload
         assert response_payload_json['data'] == 'mocked response'
+
+    def test_operator_with_empty_sql(self):
+        operator = OpenMLDBOperator(
+            task_id='run_operator',
+            sql='')
+        with self.assertRaises(AirflowException) as exc:
+            operator.execute({})
+        assert str(exc.exception) == 'no sql'
 
 
 if __name__ == '__main__':

@@ -4,7 +4,7 @@ from airflow.exceptions import AirflowException
 from airflow.sensors.base import BaseSensorOperator
 from airflow.utils.decorators import apply_defaults
 
-from sample_provider.hooks.sample_hook import SampleHook
+from openmldb_provider.hooks.openmldb_api_hook import OpenMLDBAPIHook
 
 
 class SampleSensor(BaseSensorOperator):
@@ -49,7 +49,7 @@ class SampleSensor(BaseSensorOperator):
         self.request_params = request_params or {}
         self.headers = headers or {}
 
-        self.hook = SampleHook(method=method, sample_conn_id=sample_conn_id)
+        self.hook = OpenMLDBAPIHook(method=method, openmldb_conn_id=sample_conn_id)
 
     def poke(self, context: Dict[Any, Any]) -> bool:
         from airflow.utils.operator_helpers import make_kwargs_callable
