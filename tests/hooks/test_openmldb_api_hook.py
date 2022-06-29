@@ -24,10 +24,10 @@ log = logging.getLogger(__name__)
 # Mock the `conn_sample` Airflow connection
 @mock.patch.dict('os.environ', AIRFLOW_CONN_CONN_SAMPLE='http://https%3A%2F%2Fwww.httpbin.org%2F')
 @mock.patch.dict('os.environ',
-                 AIRFLOW_CONN_OPENMLDB_DEFAULT='http://http%3A%2F%2F127.0.0.1%3A9080%2Fdbs%2Fairflow_test%2Foffsync')
+                 AIRFLOW_CONN_OPENMLDB_DEFAULT='http://http%3A%2F%2F127.0.0.1%3A9080%2Fdbs%2Fairflow_test')
 class TestOpenMLDBAPIHook(unittest.TestCase):
     """
-    Test Sample Hook.
+    Test OpenMLDB API Hook.
     """
 
     @requests_mock.mock()
@@ -85,25 +85,40 @@ class TestOpenMLDBAPIHook(unittest.TestCase):
 
     def test_query_api_server_with_sql(self):
         hook = OpenMLDBAPIHook()
-        # no data
-        response = hook.run(data='{"sql":"select 1"}')
+        response = hook.run(data='{"sql":"select 1", "mode":"offsync"}')
         res = json.loads(response.text)
         assert res == {'code': 0, 'msg': 'ok'}
+
+    def test_query_api_server_without_mode(self):
+        hook = OpenMLDBAPIHook()
+        response = hook.run(data='{"sql":"select 1"}')
+        res = json.loads(response.text)
+        assert res['code'] == -1
+        assert res['msg'].startswith('Json parse failed')
 
     def test_query_api_server(self):
         hook = OpenMLDBAPIHook()
         # We can send ddl by post too, but not recommended for users.
-        # Here just do it for tests.
-        response = hook.run(data='{"sql":"create database if not exists airflow_test"}')
+        # Here just do it for tests, mode won't affect
+        response = hook.run(data='{"sql": "create database if not exists airflow_test", "mode": "online"}',
+                            headers={"content-type": "application/json"})
         res = json.loads(response.text)
         assert res == {'code': 0, 'msg': 'ok'}
 
-        response = hook.run(data='{"sql":"create table if not exists airflow_table(c1 int)"}')
+        response = hook.run(data='{"sql":"create table if not exists airflow_table(c1 int)", "mode":"online"}',
+                            headers={"content-type": "application/json"})
         res = json.loads(response.text)
         assert res == {'code': 0, 'msg': 'ok'}
 
         # an offline sync query
-        response = hook.run(data='{"sql":"select * from airflow_table"}')
+        response = hook.run(data='{"sql":"select * from airflow_table", "mode":"offsync"}',
+                            headers={"content-type": "application/json"})
+        res = json.loads(response.text)
+        assert res == {'code': 0, 'msg': 'ok'}
+
+        # an online query(always sync)
+        response = hook.run(data='{"sql":"select * from airflow_table", "mode":"online"}',
+                            headers={"content-type": "application/json"})
         res = json.loads(response.text)
         assert res == {'code': 0, 'msg': 'ok'}
 

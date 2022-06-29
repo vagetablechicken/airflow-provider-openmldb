@@ -1,8 +1,8 @@
-from typing import Any, Callable, Dict, Optional
+import json
+from typing import Any, Dict, Optional
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
-from airflow.utils.decorators import apply_defaults
 
 from openmldb_provider.hooks.openmldb_api_hook import OpenMLDBAPIHook
 
@@ -11,8 +11,8 @@ class OpenMLDBOperator(BaseOperator):
     """
     Calls an endpoint on an OpenMLDB API Server to execute an action.
 
-    :param sample_conn_id: connection to run the operator with
-    :type sample_conn_id: str
+    :param openmldb_conn_id: connection to run the operator with
+    :type openmldb_conn_id: str
     :param endpoint: The relative part of the full url. (templated)
     :type endpoint: str
     :param mode: The execute mode to use, default = "offsync"
@@ -41,14 +41,14 @@ class OpenMLDBOperator(BaseOperator):
             sql: Any = None,
             headers: Optional[Dict[str, str]] = None,
             extra_options: Optional[Dict[str, Any]] = None,
-            sample_conn_id: str = 'conn_sample',
+            openmldb_conn_id: str = 'openmldb_default',
             **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        self.sample_conn_id = sample_conn_id
+        self.openmldb_conn_id = openmldb_conn_id
         self.mode = mode
         self.endpoint = endpoint
-        self.headers = headers or {}
+        self.headers = headers or {"content-type": "application/json"}  # use json body by default
         self.sql = sql or {}
         self.extra_options = extra_options or {}
         if kwargs.get('xcom_push') is not None:
@@ -58,10 +58,10 @@ class OpenMLDBOperator(BaseOperator):
     def execute(self, context: Dict[str, Any]) -> Any:
         if not self.sql:
             raise AirflowException('no sql')
-        hook = OpenMLDBAPIHook('POST', openmldb_conn_id=self.sample_conn_id)
+        hook = OpenMLDBAPIHook('POST', openmldb_conn_id=self.openmldb_conn_id)
 
         self.log.info("Call HTTP method")
-
-        response = hook.run(self.endpoint, data, self.headers)
+        data = {"sql": self.sql, "mode": self.mode}
+        response = hook.run(self.endpoint, json.dumps(data), self.headers)
 
         return response.text

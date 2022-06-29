@@ -107,7 +107,7 @@ class OpenMLDBAPIHook(BaseHook):
 
         prepped_request = session.prepare_request(req)
 
-        self.log.info("Sending '%s' to url: %s", self.method, url)
+        self.log.info("Sending '%s' to url: %s, body: %s", self.method, url, prepped_request.body)
 
         try:
             response = session.send(prepped_request)
