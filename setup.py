@@ -19,7 +19,7 @@ setup(
     },
     license='Apache License 2.0',
     packages=['openmldb_provider', 'openmldb_provider.hooks',
-              'openmldb_provider.sensors', 'openmldb_provider.operators'],
+              'openmldb_provider.operators'],
     install_requires=['apache-airflow>=2.0'],
     setup_requires=['setuptools', 'wheel'],
     author='Huang Wei',
