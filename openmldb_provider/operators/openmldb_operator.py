@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
@@ -40,8 +40,11 @@ class OpenMLDBOperator(BaseOperator):
             mode: str = 'offsync',
             sql: Any = None,
             headers: Optional[Dict[str, str]] = None,
+            response_check: Optional[Callable[..., bool]] = None,
+            response_filter: Optional[Callable[..., Any]] = None,
             extra_options: Optional[Dict[str, Any]] = None,
             openmldb_conn_id: str = 'openmldb_default',
+            log_response: bool = False,
             **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -50,12 +53,16 @@ class OpenMLDBOperator(BaseOperator):
         self.endpoint = endpoint
         self.headers = headers or {"content-type": "application/json"}  # use json body by default
         self.sql = sql or {}
+        self.response_check = response_check
+        self.response_filter = response_filter
         self.extra_options = extra_options or {}
+        self.log_response = log_response
         if kwargs.get('xcom_push') is not None:
             raise AirflowException(
                 "'xcom_push' was deprecated, use 'BaseOperator.do_xcom_push' instead")
 
     def execute(self, context: Dict[str, Any]) -> Any:
+        from airflow.utils.operator_helpers import determine_kwargs
         if not self.sql:
             raise AirflowException('no sql')
         hook = OpenMLDBAPIHook('POST', openmldb_conn_id=self.openmldb_conn_id)
@@ -63,5 +70,13 @@ class OpenMLDBOperator(BaseOperator):
         self.log.info("Call HTTP method")
         data = {"sql": self.sql, "mode": self.mode}
         response = hook.run(self.endpoint, json.dumps(data), self.headers)
-
+        if self.log_response:
+            self.log.info(response.text)
+        if self.response_check:
+            kwargs = determine_kwargs(self.response_check, [response], context)
+            if not self.response_check(response, **kwargs):
+                raise AirflowException("Response check returned False.")
+        if self.response_filter:
+            kwargs = determine_kwargs(self.response_filter, [response], context)
+            return self.response_filter(response, **kwargs)
         return response.text
