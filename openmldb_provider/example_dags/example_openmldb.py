@@ -19,7 +19,8 @@ import os
 from datetime import datetime
 
 from airflow.models.dag import DAG
-from airflow.providers.openmldb.operators.openmldb import (
+
+from openmldb_provider.operators.openmldb_operator import (
     Mode,
     OpenMLDBLoadDataOperator,
     OpenMLDBSelectIntoOperator,
@@ -30,12 +31,12 @@ ENV_ID = os.environ.get("SYSTEM_TESTS_ENV_ID")
 DAG_ID = "example_openmldb"
 
 with DAG(
-    dag_id=DAG_ID,
-    start_date=datetime(2021, 1, 1),
-    default_args={'openmldb_conn_id': 'openmldb_conn_id'},
-    max_active_runs=1,
-    tags=['example'],
-    catchup=False,
+        dag_id=DAG_ID,
+        start_date=datetime(2021, 1, 1),
+        default_args={'openmldb_conn_id': 'openmldb_conn_id'},
+        max_active_runs=1,
+        tags=['example'],
+        catchup=False,
 ) as dag:
     database = "example_db"
     table = "example_table"
@@ -61,8 +62,3 @@ with DAG(
     # [END load_data_and_extract_feature_offline]
 
     load_data >> feature_extract
-
-from tests.system.utils import get_test_run  # noqa: E402
-
-# Needed to run the example DAG with pytest (see: tests/system/README.md#run_via_pytest)
-test_run = get_test_run(dag)

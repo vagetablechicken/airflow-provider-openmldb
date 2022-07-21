@@ -6,7 +6,7 @@ def get_provider_info():
         "package-name": "airflow-provider-openmldb",  # Required
         "name": "OpenMLDB Airflow Provider",  # Required
         "description": "an airflow provider to connect OpenMLDB",  # Required
-        "hook-class-names": ["openmldb_provider.hooks.openmldb_api_hook.OpenMLDBAPIHook"],  # for airflow<2.2
+        "hook-class-names": ["openmldb_provider.hooks.openmldb_hook.OpenMLDBHook"],  # for airflow<2.2
         # "connection-types"
         "extra-links": ["openmldb_provider.operators.openmldb_operator.ExtraLink"],
         "versions": ["0.0.1"]  # Required

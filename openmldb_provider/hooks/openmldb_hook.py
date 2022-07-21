@@ -39,7 +39,7 @@ class OpenMLDBHook(BaseHook):
 
     conn_name_attr = 'openmldb_conn_id'
     default_conn_name = 'openmldb_default'
-    conn_type = 'openmldb'
+    conn_type = 'http'
     hook_name = 'OpenMLDB'
 
     def __init__(

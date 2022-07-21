@@ -1,11 +1,11 @@
-"""Setup.py for the Astronomer sample Airflow provider package. Built from datadog provider package for now."""
+"""Setup.py for the OpenMLDB Airflow provider package. Built from datadog provider package for now."""
 
 from setuptools import setup
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
-"""Perform the package airflow-provider-sample setup."""
+"""Perform the package airflow-provider-openmldb setup."""
 setup(
     name='airflow-provider-openmldb',
     version="0.0.1",

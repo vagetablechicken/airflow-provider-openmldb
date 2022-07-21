@@ -20,7 +20,7 @@ from datetime import datetime
 
 from airflow.models.dag import DAG
 from airflow.operators.python import PythonOperator, BranchPythonOperator
-from airflow.providers.openmldb.operators.openmldb import (
+from openmldb_provider.operators.openmldb_operator import (
     Mode,
     OpenMLDBLoadDataOperator,
     OpenMLDBSelectIntoOperator, OpenMLDBSQLOperator, OpenMLDBDeployOperator,
@@ -128,8 +128,3 @@ with DAG(
 
     create_database >> create_table >> load_data >> feature_extract >> train >> branching >> [deploy_sql,
                                                                                               fail_report]
-
-from tests.system.utils import get_test_run  # noqa: E402
-
-# Needed to run the example DAG with pytest (see: tests/system/README.md#run_via_pytest)
-test_run = get_test_run(dag)
