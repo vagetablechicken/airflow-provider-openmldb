@@ -50,7 +50,7 @@ All provider packages must adhere to the following file structure:
 │   │   └── openmldb-dag.py
 │   ├── hooks
 │   │   ├── __init__.py
-│   │   └── openmldb_api_hook.py
+│   │   └── openmldb_hook.py
 │   ├── operators
 │   │   ├── __init__.py
 │   │   └── openmldb_operator.py

@@ -1,3 +1,17 @@
+# Copyright 2021 4Paradigm
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Unittest module to test Hooks.
 
@@ -11,16 +25,41 @@ Run test:
 import json
 import logging
 import unittest
-from unittest import mock
+from unittest import mock, skip
 
 import requests_mock
+from airflow.models import Connection
+from airflow.utils import db
 
 # Import Hook
-from openmldb_provider.hooks.openmldb_api_hook import OpenMLDBAPIHook
+from openmldb_provider.hooks.openmldb_hook import OpenMLDBHook
 
 log = logging.getLogger(__name__)
 
 
+class TestOpenMLDBHook(unittest.TestCase):
+    openmldb_conn_id = 'openmldb_conn_id_test'
+    test_db_endpoint = 'http://127.0.0.1:9080/dbs/test_db'
+
+    _mock_job_status_success_response_body = {'code': 0, 'msg': 'ok'}
+
+    def setUp(self):
+        db.merge_conn(
+            Connection(
+                conn_id='openmldb_conn_id_test', conn_type='openmldb', host='http://127.0.0.1', port=9080
+            )
+        )
+        self.hook = OpenMLDBHook(openmldb_conn_id=self.openmldb_conn_id)
+
+    @requests_mock.mock()
+    def test_submit_offsync_job(self, m):
+        m.post(self.test_db_endpoint, status_code=200, json=self._mock_job_status_success_response_body)
+        resp = self.hook.submit_job('test_db', 'offsync', 'select * from t1')
+        assert resp.status_code == 200
+        assert resp.json() == self._mock_job_status_success_response_body
+
+
+@skip
 # Mock the `conn_sample` Airflow connection
 @mock.patch.dict('os.environ', AIRFLOW_CONN_CONN_SAMPLE='http://https%3A%2F%2Fwww.httpbin.org%2F')
 @mock.patch.dict('os.environ',
@@ -36,7 +75,7 @@ class TestOpenMLDBAPIHook(unittest.TestCase):
         m.post('https://www.httpbin.org/', json={'data': 'mocked response'})
 
         # Instantiate hook
-        hook = OpenMLDBAPIHook(
+        hook = OpenMLDBHook(
             openmldb_conn_id='conn_sample',
             method='post'
         )
@@ -59,7 +98,7 @@ class TestOpenMLDBAPIHook(unittest.TestCase):
         m.get('https://www.httpbin.org/', json={'data': 'mocked response'})
 
         # Instantiate hook
-        hook = OpenMLDBAPIHook(
+        hook = OpenMLDBHook(
             openmldb_conn_id='conn_sample',
             method='get'
         )
@@ -77,27 +116,27 @@ class TestOpenMLDBAPIHook(unittest.TestCase):
         assert payload['data'] == 'mocked response'
 
     def test_query_api_server_without_data(self):
-        hook = OpenMLDBAPIHook()
+        hook = OpenMLDBHook()
         # no data
         response = hook.run()
         res = json.loads(response.text)
         assert res == {'code': -1, 'msg': 'Json parse failed'}
 
     def test_query_api_server_with_sql(self):
-        hook = OpenMLDBAPIHook()
+        hook = OpenMLDBHook()
         response = hook.run(data='{"sql":"select 1", "mode":"offsync"}')
         res = json.loads(response.text)
         assert res == {'code': 0, 'msg': 'ok'}
 
     def test_query_api_server_without_mode(self):
-        hook = OpenMLDBAPIHook()
+        hook = OpenMLDBHook()
         response = hook.run(data='{"sql":"select 1"}')
         res = json.loads(response.text)
         assert res['code'] == -1
         assert res['msg'].startswith('Json parse failed')
 
     def test_query_api_server(self):
-        hook = OpenMLDBAPIHook()
+        hook = OpenMLDBHook()
         # We can send ddl by post too, but not recommended for users.
         # Here just do it for tests, mode won't affect
         response = hook.run(data='{"sql": "create database if not exists airflow_test", "mode": "online"}',

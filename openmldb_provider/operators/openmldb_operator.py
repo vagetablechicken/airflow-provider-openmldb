@@ -1,82 +1,160 @@
-import json
-from typing import Any, Dict, Optional, Callable
+# Copyright 2021 4Paradigm
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-from airflow.exceptions import AirflowException
+"""This module contains OpenMLDB operators."""
+from enum import Enum
+from typing import TYPE_CHECKING
+
+from airflow import AirflowException
 from airflow.models import BaseOperator
+from airflow.utils.operator_helpers import determine_kwargs
 
-from openmldb_provider.hooks.openmldb_api_hook import OpenMLDBAPIHook
+from openmldb_provider.hooks.openmldb_hook import OpenMLDBHook
+
+if TYPE_CHECKING:
+    from airflow.utils.context import Context
 
 
-class OpenMLDBOperator(BaseOperator):
+class Mode(Enum):
+    """Available options for OpenMLDB execute mode"""
+
+    OFFSYNC = 'offsync'
+    OFFASYNC = 'offasync'
+    ONLINE = 'online'
+
+
+class OpenMLDBSQLOperator(BaseOperator):
     """
-    Calls an endpoint on an OpenMLDB API Server to execute an action.
+    This operator runs any sql on OpenMLDB
 
-    :param openmldb_conn_id: connection to run the operator with
-    :type openmldb_conn_id: str
-    :param endpoint: The relative part of the full url. (templated)
-    :type endpoint: str
-    :param mode: The execute mode to use, default = "offsync"
-    :type mode: str
-    :param sql: The sql to pass
-    :type sql: str
-    :param headers: The HTTP headers to be added to the request
-    :type headers: a dictionary of string key/value pairs
+    :param db: The database you want to use
+    :param mode: The execute mode, offsync, offasync, online.
+    :param sql: The sql you want to deploy
+    :param openmldb_conn_id: The Airflow connection used for OpenMLDB.
+    :keyword disable_response_check: If true, do not do response check
+    :keyword response_check: custom response check function. If None, check if the response code equals 0.
     """
-
-    # Specify the arguments that are allowed to parse with jinja templating
-    template_fields = [
-        'endpoint',
-        'sql',
-        'headers',
-    ]
-    template_fields_renderers = {'headers': 'json', 'sql': 'sql'}  # TODO(hw): sql renderer?
-    template_ext = ()
-    ui_color = '#f4a460'
 
     def __init__(
             self,
-            *,
-            endpoint: Optional[str] = None,
-            mode: str = 'offsync',
-            sql: Any = None,
-            headers: Optional[Dict[str, str]] = None,
-            response_check: Optional[Callable[..., bool]] = None,
-            response_filter: Optional[Callable[..., Any]] = None,
-            extra_options: Optional[Dict[str, Any]] = None,
+            db: str,
+            mode: Mode,
+            sql: str,
             openmldb_conn_id: str = 'openmldb_default',
-            log_response: bool = False,
-            **kwargs: Any,
+            **kwargs,
     ) -> None:
+        if kwargs.pop("disable_response_check", False):
+            self.response_check = None
+        else:
+            self.response_check = kwargs.pop("response_check", lambda response: response.json()["code"] == 0)
         super().__init__(**kwargs)
         self.openmldb_conn_id = openmldb_conn_id
+        self.db = db
         self.mode = mode
-        self.endpoint = endpoint
-        self.headers = headers or {"content-type": "application/json"}  # use json body by default
-        self.sql = sql or {}
-        self.response_check = response_check
-        self.response_filter = response_filter
-        self.extra_options = extra_options or {}
-        self.log_response = log_response
-        if kwargs.get('xcom_push') is not None:
-            raise AirflowException(
-                "'xcom_push' was deprecated, use 'BaseOperator.do_xcom_push' instead")
+        self.sql = sql
 
-    def execute(self, context: Dict[str, Any]) -> Any:
-        from airflow.utils.operator_helpers import determine_kwargs
-        if not self.sql:
-            raise AirflowException('no sql')
-        hook = OpenMLDBAPIHook('POST', openmldb_conn_id=self.openmldb_conn_id)
+    def execute(self, context: 'Context'):
+        openmldb_hook = OpenMLDBHook(openmldb_conn_id=self.openmldb_conn_id)
+        response = openmldb_hook.submit_job(db=self.db, mode=self.mode.value, sql=self.sql)
 
-        self.log.info("Call HTTP method")
-        data = {"sql": self.sql, "mode": self.mode}
-        response = hook.run(self.endpoint, json.dumps(data), self.headers)
-        if self.log_response:
-            self.log.info(response.text)
         if self.response_check:
             kwargs = determine_kwargs(self.response_check, [response], context)
             if not self.response_check(response, **kwargs):
-                raise AirflowException("Response check returned False.")
-        if self.response_filter:
-            kwargs = determine_kwargs(self.response_filter, [response], context)
-            return self.response_filter(response, **kwargs)
+                raise AirflowException(
+                    f"Response check returned False. Resp: {response.text}"
+                )
         return response.text
+
+
+class OpenMLDBLoadDataOperator(OpenMLDBSQLOperator):
+    """
+    This operator loads data to OpenMLDB
+
+    :param db: The database you want to use
+    :param mode: The execute mode
+    :param table: The table you want to load data to
+    :param file: The data path you want to load, local or hdfs
+    :param openmldb_conn_id: The Airflow connection used for OpenMLDB.
+    :keyword options: load data options
+    """
+
+    def __init__(
+            self,
+            db: str,
+            mode: Mode,
+            table: str,
+            file: str,
+            openmldb_conn_id: str = 'openmldb_default',
+            **kwargs,
+    ) -> None:
+        load_data_options = kwargs.pop('options', None)
+        sql = f"LOAD DATA INFILE '{file}' INTO TABLE {table}"
+        if load_data_options:
+            sql += f" OPTIONS({load_data_options})"
+        super().__init__(db=db, mode=mode, sql=sql, **kwargs)
+        self.openmldb_conn_id = openmldb_conn_id
+
+
+class OpenMLDBSelectIntoOperator(OpenMLDBSQLOperator):
+    """
+    This operator extracts feature from OpenMLDB and save it
+
+    :param db: The database you want to use
+    :param mode: The execute mode
+    :param table: The table you want to select
+    :param file: The data path you want to save features, local or hdfs
+    :param openmldb_conn_id: The Airflow connection used for OpenMLDB.
+    :keyword options: select into options
+    """
+
+    def __init__(
+            self,
+            db: str,
+            mode: Mode,
+            sql: str,
+            file: str,
+            openmldb_conn_id: str = 'openmldb_default',
+            **kwargs,
+    ) -> None:
+        select_out_options = kwargs.pop('options', None)
+        sql = f"{sql} INTO OUTFILE '{file}'"
+        if select_out_options:
+            sql += f" OPTIONS({select_out_options})"
+        super().__init__(db=db, mode=mode, sql=sql, **kwargs)
+        self.openmldb_conn_id = openmldb_conn_id
+
+
+class OpenMLDBDeployOperator(OpenMLDBSQLOperator):
+    """
+    This operator deploys a sql to OpenMLDB
+
+    :param db: The database you want to use
+    :param deploy_name: The deployment name
+    :param sql: The sql you want to deploy
+    :param openmldb_conn_id: The Airflow connection used for OpenMLDB.
+    :keyword options: load data options
+    """
+
+    def __init__(
+            self,
+            db: str,
+            deploy_name: str,
+            sql: str,
+            openmldb_conn_id: str = 'openmldb_default',
+            **kwargs,
+    ) -> None:
+        super().__init__(
+            db=db, mode=Mode.ONLINE, sql=f"DEPLOY {deploy_name} {sql}", **kwargs  # mode can be any one
+        )
+        self.openmldb_conn_id = openmldb_conn_id
